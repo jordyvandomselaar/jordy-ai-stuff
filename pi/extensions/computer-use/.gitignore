@@ -1,0 +1,3 @@
+# Local copy of OpenAI's signed native helper. Keep it on disk for runtime, but
+# don't accidentally commit a 27MB proprietary .app bundle into ~/.pi.
+/vendor/Codex Computer Use.app/
