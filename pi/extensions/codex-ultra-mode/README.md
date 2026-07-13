@@ -14,6 +14,25 @@ The footer shows the active mode and thinking level, for example `Ultra (medium)
 
 Ultra does not rewrite provider reasoning effort. The root and every newly spawned child use the thinking level selected in Pi when their runtime is created.
 
+## Change the subagent limit
+
+Ultra allows four active or reserved agents by default. That total includes `/root`, so the default permits up to three subagents across the complete agent tree.
+
+Set `maxConcurrentThreadsPerSession` in one of these JSON files:
+
+- `$PI_CODING_AGENT_DIR/codex-ultra-mode.json` for all projects. Pi uses `~/.pi/agent` when `PI_CODING_AGENT_DIR` is not set.
+- `<project>/.pi/codex-ultra-mode.json` for one trusted project. Project configuration overrides the global value.
+
+For example, this permits `/root` plus up to seven subagents:
+
+```json
+{
+  "maxConcurrentThreadsPerSession": 8
+}
+```
+
+The value must be a safe integer of at least `1`. Configuration is loaded when a Pi session starts, so start a new session after changing it.
+
 ## Collaboration contract
 
 | Capability | Behavior |
