@@ -1,4 +1,4 @@
 Bundled from:
-/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app
+/Applications/ChatGPT.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app
 
-This is OpenAI's signed Codex Computer Use native helper bundle. The Pi extension launches it through the OpenAI-signed Codex Node binary so the helper's parent-code-signing checks pass.
+This is OpenAI's signed Codex Computer Use native helper bundle. The Pi extension launches it through the OpenAI-signed Node binary so the helper's parent-code-signing checks pass.

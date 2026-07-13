@@ -2,17 +2,19 @@
 /*
  * Signed-parent trampoline for OpenAI's Codex Computer Use MCP client.
  * Run this file with an OpenAI-signed Codex Node binary, not with the host pi
- * Node process. Current Codex builds package it at
- * /Applications/Codex.app/Contents/Resources/cua_node/bin/node; older builds
- * used /Applications/Codex.app/Contents/Resources/node. The native MCP client
- * checks its responsible process signature, and the Codex Node binary carries
- * OpenAI's Team ID.
+ * Node process. Current OpenAI desktop builds package it under
+ * Contents/Resources/cua_node/bin/node; older builds used
+ * Contents/Resources/node. The native MCP client checks its responsible
+ * process signature, and the bundled Node binary carries OpenAI's Team ID.
  */
 const { spawn } = require('node:child_process');
 const { existsSync, accessSync, constants } = require('node:fs');
 const { dirname, join } = require('node:path');
 
-const DEFAULT_CODEX_APP_PATH = '/Applications/Codex.app';
+const DEFAULT_OPENAI_APP_PATHS = [
+  '/Applications/ChatGPT.app',
+  '/Applications/Codex.app',
+];
 const CODEX_PLUGIN_NATIVE_APP_RELATIVE_PATH = join(
   'Contents',
   'Resources',
@@ -50,8 +52,11 @@ function resolveNativeAppPath() {
   const bundled = join(__dirname, 'vendor', 'Codex Computer Use.app');
   if (isExecutable(clientPathFor(bundled))) return bundled;
 
-  const codexAppPath = process.env.PI_CUA_CODEX_APP_PATH || DEFAULT_CODEX_APP_PATH;
-  return join(codexAppPath, CODEX_PLUGIN_NATIVE_APP_RELATIVE_PATH);
+  const openAIAppPath = process.env.PI_CUA_OPENAI_APP_PATH
+    || process.env.PI_CUA_CODEX_APP_PATH
+    || DEFAULT_OPENAI_APP_PATHS.find(existsSync)
+    || DEFAULT_OPENAI_APP_PATHS[0];
+  return join(openAIAppPath, CODEX_PLUGIN_NATIVE_APP_RELATIVE_PATH);
 }
 
 const nativeAppPath = resolveNativeAppPath();

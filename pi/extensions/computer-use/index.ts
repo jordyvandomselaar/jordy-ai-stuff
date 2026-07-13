@@ -8,10 +8,13 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type, type Static, type TSchema } from "typebox";
 
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CODEX_APP_PATH = "/Applications/Codex.app";
-const CODEX_NODE_RELATIVE_PATHS = [
-  join("Contents", "Resources", "node"),
+const DEFAULT_OPENAI_APP_PATHS = [
+  "/Applications/ChatGPT.app",
+  "/Applications/Codex.app",
+];
+const OPENAI_NODE_RELATIVE_PATHS = [
   join("Contents", "Resources", "cua_node", "bin", "node"),
+  join("Contents", "Resources", "node"),
 ];
 const CODEX_PLUGIN_NATIVE_APP_RELATIVE_PATH = join(
   "Contents",
@@ -107,7 +110,19 @@ type AllowlistMatch = {
 
 type NativeAppResolution = {
   path: string;
-  source: "env" | "bundled" | "codex-app";
+  source: "env" | "bundled" | "openai-app";
+};
+
+type ComputerUseStatus = {
+  running: boolean;
+  openAIAppPath: string;
+  nativeAppPath?: string;
+  nativeAppSource?: NativeAppResolution["source"];
+  openAINodePath?: string;
+  launcherPath: string;
+  repairSkill: string;
+  allowlist: JsonObject;
+  stderrTail: string;
 };
 
 const EMPTY_PARAMS = Type.Object({}, { additionalProperties: false });
@@ -216,9 +231,12 @@ function isExecutable(filePath: string): boolean {
   }
 }
 
-function resolveCodexAppPath(): string {
-  const override = process.env.PI_CUA_CODEX_APP_PATH?.trim();
-  return override && override.length > 0 ? override : DEFAULT_CODEX_APP_PATH;
+function resolveOpenAIAppPath(): string {
+  const override = process.env.PI_CUA_OPENAI_APP_PATH?.trim()
+    || process.env.PI_CUA_CODEX_APP_PATH?.trim();
+  if (override) return override;
+
+  return DEFAULT_OPENAI_APP_PATHS.find(existsSync) ?? DEFAULT_OPENAI_APP_PATHS[0];
 }
 
 function nativeClientPath(nativeAppPath: string): string {
@@ -238,16 +256,17 @@ function hasExecutableNativeClient(nativeAppPath: string): boolean {
   return existsSync(client) && isExecutable(client);
 }
 
-function resolveCodexNodePath(): string {
-  const override = process.env.PI_CUA_CODEX_NODE_PATH?.trim();
+function resolveOpenAINodePath(): string {
+  const override = process.env.PI_CUA_OPENAI_NODE_PATH?.trim()
+    || process.env.PI_CUA_CODEX_NODE_PATH?.trim();
   const candidates =
     override && override.length > 0
       ? [override]
-      : CODEX_NODE_RELATIVE_PATHS.map((relativePath) => join(resolveCodexAppPath(), relativePath));
+      : OPENAI_NODE_RELATIVE_PATHS.map((relativePath) => join(resolveOpenAIAppPath(), relativePath));
   const candidate = candidates.find((path) => existsSync(path) && isExecutable(path));
   if (!candidate) {
     throw new Error(
-      `OpenAI-signed Codex Node binary not found or not executable at ${candidates.join(", ")}. Set PI_CUA_CODEX_APP_PATH or PI_CUA_CODEX_NODE_PATH if Codex.app lives elsewhere.`,
+      `OpenAI-signed Node binary not found or not executable at ${candidates.join(", ")}. Set PI_CUA_OPENAI_APP_PATH or PI_CUA_OPENAI_NODE_PATH if the OpenAI desktop app lives elsewhere.`,
     );
   }
   return candidate;
@@ -264,11 +283,11 @@ function resolveNativeApp(): NativeAppResolution {
 
   if (hasExecutableNativeClient(BUNDLED_NATIVE_APP_PATH)) return { path: BUNDLED_NATIVE_APP_PATH, source: "bundled" };
 
-  const codexAppNativePath = join(resolveCodexAppPath(), CODEX_PLUGIN_NATIVE_APP_RELATIVE_PATH);
-  if (hasExecutableNativeClient(codexAppNativePath)) return { path: codexAppNativePath, source: "codex-app" };
+  const openAIAppNativePath = join(resolveOpenAIAppPath(), CODEX_PLUGIN_NATIVE_APP_RELATIVE_PATH);
+  if (hasExecutableNativeClient(openAIAppNativePath)) return { path: openAIAppNativePath, source: "openai-app" };
 
   throw new Error(
-    `Codex Computer Use native client not found. Looked at ${nativeClientPath(BUNDLED_NATIVE_APP_PATH)} and ${nativeClientPath(codexAppNativePath)}. Re-copy the native bundle into ${BUNDLED_NATIVE_APP_PATH}, set PI_CUA_NATIVE_APP_PATH, or set PI_CUA_CODEX_APP_PATH.`,
+    `Codex Computer Use native client not found. Looked at ${nativeClientPath(BUNDLED_NATIVE_APP_PATH)} and ${nativeClientPath(openAIAppNativePath)}. Re-copy the native bundle into ${BUNDLED_NATIVE_APP_PATH}, set PI_CUA_NATIVE_APP_PATH, or set PI_CUA_OPENAI_APP_PATH.`,
   );
 }
 
@@ -610,25 +629,25 @@ class ComputerUseMcpClient {
     child.once("close", () => clearTimeout(killTimer));
   }
 
-  status(): JsonObject {
+  status(): ComputerUseStatus {
     let nativeApp: NativeAppResolution | undefined;
-    let codexNodePath: string | undefined;
+    let openAINodePath: string | undefined;
     try {
       nativeApp = resolveNativeApp();
     } catch {
       nativeApp = undefined;
     }
     try {
-      codexNodePath = resolveCodexNodePath();
+      openAINodePath = resolveOpenAINodePath();
     } catch {
-      codexNodePath = undefined;
+      openAINodePath = undefined;
     }
     return {
       running: this.isRunning,
-      codexAppPath: resolveCodexAppPath(),
+      openAIAppPath: resolveOpenAIAppPath(),
       nativeAppPath: nativeApp?.path,
       nativeAppSource: nativeApp?.source,
-      codexNodePath,
+      openAINodePath,
       launcherPath: LAUNCHER_PATH,
       repairSkill: REPAIR_SKILL_COMMAND,
       allowlist: allowlistStatus(),
@@ -648,13 +667,13 @@ class ComputerUseMcpClient {
   private async ensureStarted(signal?: AbortSignal): Promise<void> {
     if (this.initialized) return this.initialized;
 
-    const codexNodePath = resolveCodexNodePath();
+    const openAINodePath = resolveOpenAINodePath();
     const nativeAppPath = resolveNativeAppPath();
     if (!existsSync(LAUNCHER_PATH)) {
       throw new Error(`Computer Use launcher missing at ${LAUNCHER_PATH}.`);
     }
 
-    this.child = spawn(codexNodePath, [LAUNCHER_PATH, "mcp"], {
+    this.child = spawn(openAINodePath, [LAUNCHER_PATH, "mcp"], {
       cwd: dirname(nativeAppPath),
       env: { ...process.env, PI_CUA_NATIVE_APP_PATH: nativeAppPath },
       stdio: ["pipe", "pipe", "pipe"],
@@ -954,7 +973,7 @@ export default function (pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     listAppsConfirmedForSession = false;
     const status = computerUse.status();
-    const ready = typeof status.nativeAppPath === "string" && typeof status.codexNodePath === "string";
+    const ready = typeof status.nativeAppPath === "string" && typeof status.openAINodePath === "string";
     ctx.ui.setStatus("computer-use", ready ? "Computer Use ready" : "Computer Use missing native helper");
   });
 
