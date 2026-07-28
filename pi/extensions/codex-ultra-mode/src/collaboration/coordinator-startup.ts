@@ -1,4 +1,6 @@
+import type { CollaborationConfig } from "../collaboration-config.ts"
 import { ROOT_AGENT_PATH } from "../ultra-contract.ts"
+import { agentRole } from "./agent-roles.ts"
 import type {
   CollaborationActorContext,
   CollaborationActorFactory,
@@ -35,6 +37,7 @@ export class CoordinatorStartup {
     private readonly delivery: CoordinatorDelivery,
     private readonly residency: CoordinatorResidency,
     private readonly lifecycle: CoordinatorSessionLifecycle,
+    private readonly config: CollaborationConfig,
   ) {}
 
   async restore(
@@ -107,6 +110,15 @@ export class CoordinatorStartup {
     }
     const task = nonEmptyMessage(request.task)
     const context = this.forkContext(parent.path, path, task, request)
+    if (
+      request.agentType !== undefined
+      && agentRole(this.config.agentRoles, request.agentType) === undefined
+    ) {
+      throw new CollaborationError(
+        "invalid_operation",
+        `unknown agent_type '${request.agentType}'`,
+      )
+    }
     this.registry.reserveSlot()
 
     let creation: Promise<CollaborationActorSession>
@@ -118,6 +130,7 @@ export class CoordinatorStartup {
           task,
           context,
           runtimeOverrides: {
+            agentType: request.agentType,
             model: request.model,
             reasoningEffort: request.reasoningEffort,
           },
@@ -231,8 +244,17 @@ export class CoordinatorStartup {
     try {
       if (
         parseForkTurns(request.forkTurns).kind === "all"
-        && (request.model !== undefined || request.reasoningEffort !== undefined)
+        && (
+          request.agentType !== undefined
+          || request.model !== undefined
+          || request.reasoningEffort !== undefined
+        )
       ) {
+        if (request.agentType !== undefined) {
+          throw new Error(
+            "full-history forked agents inherit the parent agent type; omit agent_type or use a truncated fork",
+          )
+        }
         throw new Error("model and reasoning_effort overrides require a truncated fork")
       }
       return projectForkContext({

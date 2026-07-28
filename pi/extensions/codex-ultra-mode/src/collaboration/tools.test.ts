@@ -19,7 +19,7 @@ interface CapturedTool {
   name: string
   label: string
   description: string
-  parameters: unknown
+  parameters: { properties?: Record<string, unknown> }
   renderCall?: (
     args: Record<string, unknown>,
     theme: FakeTheme,
@@ -73,6 +73,13 @@ describe("collaboration tools", () => {
       undefined,
       {
         ...DEFAULT_COLLABORATION_CONFIG,
+        agentRoles: [{
+          description: "Use for execution work.",
+          filePath: "/agents/worker.md",
+          name: "worker",
+          source: "user",
+          systemPrompt: "Own the assigned files.",
+        }],
         defaultWaitTimeoutMs: 50,
         minWaitTimeoutMs: 50,
       },
@@ -93,6 +100,19 @@ describe("collaboration tools", () => {
       "spawn_agent",
       "wait_agent",
     ])
+    expect(tools.get("spawn_agent")?.parameters.properties).toMatchObject({
+      model: { type: "string" },
+      reasoning_effort: { type: "string" },
+    })
+    expect(tools.get("wait_agent")?.parameters).toMatchObject({
+      properties: {
+        timeout_ms: {
+          description: expect.stringContaining(
+            "Prefer longer waits (minutes) to avoid busy polling.",
+          ),
+        },
+      },
+    })
     const configuredContracts = collaborationToolContracts(coordinator.config)
     for (const [name, contract] of Object.entries(configuredContracts)) {
       expect(tools.get(name)).toMatchObject(contract)
@@ -149,7 +169,7 @@ describe("collaboration tools", () => {
       undefined,
       ctx,
     )
-    expect(listed?.details).toMatchObject({
+    expect(listed?.details).toEqual({
       agents: [
         { agent_name: "/root", agent_status: "running" },
         { agent_name: "/root/research", agent_status: "running" },
@@ -191,5 +211,71 @@ describe("collaboration tools", () => {
       { expanded: false, isError: false, isPartial: false },
       theme,
     ).text).toBe("✓ Message delivered")
+
+    await expect(tools.get("spawn_agent")?.execute(
+      "full-role-fork",
+      {
+        agent_type: "worker",
+        fork_turns: "all",
+        message: "Implement",
+        task_name: "invalid_full_fork",
+      },
+      undefined,
+      undefined,
+      ctx,
+    )).rejects.toThrow("full-history forked agents inherit the parent agent type")
+    await expect(tools.get("spawn_agent")?.execute(
+      "unknown-role",
+      {
+        agent_type: "missing",
+        fork_turns: "none",
+        message: "Implement",
+        task_name: "invalid_role",
+      },
+      undefined,
+      undefined,
+      ctx,
+    )).rejects.toThrow("unknown agent_type 'missing'")
+
+    const roleSpawn = await tools.get("spawn_agent")?.execute(
+      "role-spawn",
+      {
+        agent_type: "worker",
+        fork_turns: "none",
+        message: "Implement",
+        task_name: "implementation",
+      },
+      undefined,
+      undefined,
+      ctx,
+    )
+    expect(roleSpawn?.details).toEqual({ task_name: "/root/implementation" })
+    expect(specs.at(-1)).toMatchObject({
+      context: { history: [] },
+      runtimeOverrides: { agentType: "worker" },
+    })
+  })
+
+  test("omits wait_agent when the feature is disabled", () => {
+    const coordinator = new CollaborationCoordinator(
+      { rootActor: new FakeSession(), createActor: () => new FakeSession() },
+      undefined,
+      undefined,
+      { ...DEFAULT_COLLABORATION_CONFIG, waitAgentEnabled: false },
+    )
+    const tools = new Map<string, CapturedTool>()
+    const pi = {
+      registerTool(tool: CapturedTool) { tools.set(tool.name, tool) },
+    } as ExtensionAPI
+
+    registerCollaborationTools(pi, coordinator, "/root")
+
+    expect([...tools.keys()].sort()).toEqual([
+      "followup_task",
+      "interrupt_agent",
+      "list_agents",
+      "send_message",
+      "spawn_agent",
+    ])
   })
 })

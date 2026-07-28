@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { DEFAULT_COLLABORATION_CONFIG } from "./collaboration-config.ts"
 import {
   EXPLICIT_REQUEST_ONLY_MULTI_AGENT_MODE_TEXT,
   MULTI_AGENT_MODE_MARKERS,
@@ -68,13 +69,18 @@ describe("Ultra hooks", () => {
       resolveUltraContext(sol, true),
       "root",
       {
+        ...DEFAULT_COLLABORATION_CONFIG,
         defaultWaitTimeoutMs: 30_000,
         maxConcurrentThreadsPerSession: 7,
         maxWaitTimeoutMs: 3_600_000,
         minWaitTimeoutMs: 10_000,
+        waitAgentEnabled: false,
       },
     )
 
-    expect(prompt).toContain("There are 7 available concurrency slots")
+    expect(prompt).toContain(
+      "There are 7 available sub-agent slots, meaning that up to 7 spawned agents can be active at once in addition to you.",
+    )
+    expect(prompt).not.toContain("`wait_agent`")
   })
 })

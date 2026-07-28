@@ -111,7 +111,6 @@ export class CoordinatorResidency {
         return record?.state.kind === "terminal"
           && record.state.session !== undefined
           && record.pending.length === 0
-          && record.unreadActivity === 0
       })
       if (candidatePath === undefined) {
         throw new CollaborationError(

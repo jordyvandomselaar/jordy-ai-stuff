@@ -119,10 +119,11 @@ export class CoordinatorRegistry {
 
   reserveSlot(): void {
     const limit = this.config.maxConcurrentThreadsPerSession
-    if (this.activeAgentCount >= limit) {
+    const activeSubagentCount = Math.max(0, this.activeAgentCount - 1)
+    if (activeSubagentCount >= limit) {
       throw new CollaborationError(
         "capacity_exhausted",
-        `maximum of ${limit} active agents reached`,
+        `maximum of ${limit} active subagents reached`,
       )
     }
   }

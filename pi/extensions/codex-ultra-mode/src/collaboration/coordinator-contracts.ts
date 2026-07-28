@@ -74,6 +74,7 @@ export interface CollaborationClock {
 }
 
 export interface SpawnAgentRequest {
+  agentType?: string
   task: string
   parentHistory: readonly ForkHistoryItem[]
   forkTurns?: unknown

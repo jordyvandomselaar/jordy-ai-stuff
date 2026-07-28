@@ -15,11 +15,13 @@ import {
   persistedActorState,
   snapshotFromContext,
 } from "./pi-runtime.ts"
+import { disableChildCachedWebSocketPrewarm } from "./pi-child-transport.ts"
 import { registerCollaborationTools } from "./tools.ts"
 
 export const PI_CHILD_SESSION_POLICY = Object.freeze({
   inheritActiveExtensionSources: true,
   noExtensions: true,
+  transport: "sse" as const,
 })
 
 export async function bindChildSessionExtensions(
@@ -87,6 +89,7 @@ export async function createProductionChildSession(
     projectTrusted: snapshot.projectTrusted,
   })
   settingsManager.applyOverrides(loadedSettings.getProjectSettings())
+  settingsManager.applyOverrides({ transport: PI_CHILD_SESSION_POLICY.transport })
   const loader = new DefaultResourceLoader({
     cwd: snapshot.cwd,
     agentDir: getAgentDir(),
@@ -115,6 +118,7 @@ export async function createProductionChildSession(
     }],
   })
   await loader.reload()
+  disableChildCachedWebSocketPrewarm(loader.getExtensions())
 
   const sessionManager = SessionManager.inMemory(snapshot.cwd)
   appendForkHistory(

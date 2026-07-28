@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import {
+  type CollaborationConfig,
+  DEFAULT_COLLABORATION_CONFIG,
+} from "../collaboration-config.ts"
 import type { CollaborationActorInput, CollaborationInputSink } from "./actor-session.ts"
 import { CollaborationCoordinator } from "./coordinator.ts"
 import {
@@ -41,6 +45,18 @@ describe("Pi actor runtime", () => {
         persistedMessages.push({ path, sequence })
       },
     }
+    const collaborationConfig = {
+      ...DEFAULT_COLLABORATION_CONFIG,
+      agentRoles: [{
+        description: "Use for implementation.",
+        filePath: "/agents/worker.md",
+        name: "worker",
+        source: "user",
+        systemPrompt: "Own a disjoint write set.",
+        thinkingLevel: "high",
+        tools: ["read"],
+      }],
+    } satisfies CollaborationConfig
     let coordinator: CollaborationCoordinator
     const factory = new PiActorFactory(rootActor, () => coordinator, async (request) => {
       requests.push(request)
@@ -48,20 +64,30 @@ describe("Pi actor runtime", () => {
       sessions.push(session)
       return session
     }, persistence)
-    coordinator = new CollaborationCoordinator(factory)
+    coordinator = new CollaborationCoordinator(
+      factory,
+      undefined,
+      undefined,
+      collaborationConfig,
+    )
     const rootTools = [
       toolInfo("read", "<builtin:read>"),
       toolInfo("spawn_agent", "/extensions/codex-ultra-mode.ts"),
       toolInfo("extension_tool", "/extensions/parent-tools.ts"),
     ]
     factory.bindRoot(rootContext(), {
+      collaborationConfig,
       thinkingLevel: "medium",
       toolInfos: rootTools,
       tools: rootTools.map((tool) => tool.name),
       ultraEnabled: true,
     })
 
-    const childSpawn = coordinator.spawn("/root", "child", taskRequest("Investigate"))
+    expect(rootTools.map((tool) => tool.name)).toContain("extension_tool")
+    const childSpawn = coordinator.spawn("/root", "child", {
+      ...taskRequest("Investigate"),
+      agentType: "worker",
+    })
     await childSpawn
     expect(sessions[0].sent[0]).toMatchObject({
       message: {
@@ -79,8 +105,10 @@ describe("Pi actor runtime", () => {
 
     expect(requests[0].runtime.snapshot).toMatchObject({
       extensionPaths: ["/extensions/parent-tools.ts"],
-      tools: ["read", "spawn_agent", "extension_tool"],
+      thinkingLevel: "high",
+      tools: ["read", "spawn_agent"],
     })
+    expect(requests[0].runtime.snapshot.systemPrompt).toContain("Own a disjoint write set.")
     const childTools = [
       toolInfo("bash", "<builtin:bash>"),
       toolInfo("spawn_agent", "/extensions/codex-ultra-mode.ts"),
@@ -102,10 +130,12 @@ describe("Pi actor runtime", () => {
       ultraEnabled: true,
     })
     expect(requests[1].runtime.snapshot.systemPrompt).toContain("You are an agent in a team")
+    expect(requests[1].runtime.snapshot.systemPrompt).toContain("Own a disjoint write set.")
     expect(childSystemPrompt(requests[0])).toContain("Proactive multi-agent delegation is active")
     expect(PI_CHILD_SESSION_POLICY).toEqual({
       inheritActiveExtensionSources: true,
       noExtensions: true,
+      transport: "sse",
     })
     factory.bindRoot(rootContext("/new-root-workspace"), {
       thinkingLevel: "high",
@@ -152,7 +182,7 @@ describe("Pi actor runtime", () => {
     expect(sessions.every((session) => session.disposals === 1)).toBe(true)
   })
 
-  test("omits parent-only tools and allows inherited extensions to change the active set", async () => {
+  test("omits parent-only tools and allows inherited extension runtime changes", async () => {
     const requests: PiChildSessionRequest[] = []
     let coordinator: CollaborationCoordinator
     const factory = new PiActorFactory(
@@ -165,8 +195,10 @@ describe("Pi actor runtime", () => {
     )
     coordinator = new CollaborationCoordinator(factory)
     const readTool = toolInfo("read", "<builtin:read>")
+    const mcpTool = toolInfo("mcp", "/extensions/pi-mcp-adapter.ts")
     const tools = [
       readTool,
+      mcpTool,
       toolInfo("sdk_tool", "<sdk:sdk_tool>"),
       toolInfo("inline_tool", "<inline:custom-tools>"),
     ]
@@ -180,30 +212,39 @@ describe("Pi actor runtime", () => {
     await coordinator.spawn("/root", "child", taskRequest("Use inherited tools"))
     expect(requests).toHaveLength(1)
     expect(requests[0].runtime.snapshot).toMatchObject({
-      extensionPaths: [],
-      toolInfos: [readTool],
-      tools: ["read"],
+      extensionPaths: ["/extensions/pi-mcp-adapter.ts"],
+      toolInfos: [readTool, mcpTool],
+      tools: ["read", "mcp"],
     })
     expect(() => assertInheritedToolParity(requests[0].runtime.snapshot, {
       getActiveToolNames: () => [],
-      getAllTools: () => [readTool],
+      getAllTools: () => [readTool, mcpTool],
     }, "/root/child")).not.toThrow()
 
     expect(() => assertInheritedToolParity(requests[0].runtime.snapshot, {
       getActiveToolNames: () => [],
-      getAllTools: () => [],
+      getAllTools: () => [mcpTool],
     }, "/root/child")).toThrow(
       "Child /root/child could not recreate the parent's inherited tools (unavailable: read)",
     )
 
     expect(() => assertInheritedToolParity(requests[0].runtime.snapshot, {
       getActiveToolNames: () => [],
-      getAllTools: () => [toolInfo("read", "/extensions/replacement.ts")],
-    }, "/root/child")).toThrow("different definitions: read")
+      getAllTools: () => [toolInfo("read", "/extensions/replacement.ts"), mcpTool],
+    }, "/root/child")).toThrow("different sources: read")
 
     expect(() => assertInheritedToolParity(requests[0].runtime.snapshot, {
-      getActiveToolNames: () => ["read"],
-      getAllTools: () => [readTool],
+      getActiveToolNames: () => [],
+      getAllTools: () => [readTool, {
+        ...mcpTool,
+        description: "Description refreshed from live extension metadata",
+        parameters: { type: "object", properties: { refreshed: { type: "boolean" } } },
+      }],
+    }, "/root/child")).not.toThrow()
+
+    expect(() => assertInheritedToolParity(requests[0].runtime.snapshot, {
+      getActiveToolNames: () => ["read", "mcp"],
+      getAllTools: () => [readTool, mcpTool],
     }, "/root/child")).not.toThrow()
   })
 

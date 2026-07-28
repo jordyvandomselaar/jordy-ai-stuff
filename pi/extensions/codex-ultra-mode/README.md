@@ -1,6 +1,8 @@
 # Codex Ultra Mode for Pi
 
-A Pi extension for explicitly enabling Codex's proactive multi-agent delegation policy. Its collaboration baseline is Codex commit [`8cf9a1b1f8ea35c724831a739fea2d725d72c582`](https://github.com/openai/codex/commit/8cf9a1b1f8ea35c724831a739fea2d725d72c582).
+A Pi extension for explicitly enabling Codex's proactive multi-agent delegation policy. Its collaboration baseline is Codex commit [`f029bb795ccbbd8471511f5a8b93e56d8f2b6d31`](https://github.com/openai/codex/commit/f029bb795ccbbd8471511f5a8b93e56d8f2b6d31).
+
+Agent-role behavior follows Codex commit [`f029bb795ccbbd8471511f5a8b93e56d8f2b6d31`](https://github.com/openai/codex/commit/f029bb795ccbbd8471511f5a8b93e56d8f2b6d31), adapted to Pi's Markdown agent definitions.
 
 Requires Pi 0.80.6 or newer.
 
@@ -8,42 +10,73 @@ Requires Pi 0.80.6 or newer.
 
 1. Select any available Pi model.
 2. Select any supported Pi thinking level, such as `medium`.
-3. Run `/ultra` to enable proactive delegation. Run it again to disable the mode.
+3. Run `/ultra` to toggle proactive delegation.
 
 The footer shows the active mode and thinking level, for example `Ultra (medium)`. The setting persists in the current Pi session and remains enabled when switching models. Ultra pauses only when no model is active.
 
 Ultra does not rewrite provider reasoning effort. The root and every newly spawned child use the thinking level selected in Pi when their runtime is created.
 
-## Change the subagent limit
+## Configuration
 
-Ultra allows four active or reserved agents by default. That total includes `/root`, so the default permits up to three subagents across the complete agent tree.
+Ultra allows three spawned agents by default. `/root` does not consume a configured subagent slot, so the default permits four active agents in total.
 
-Set `maxConcurrentThreadsPerSession` in one of these JSON files:
+Set `defaultsOn` or `maxConcurrentThreadsPerSession` in one of these JSON files:
 
 - `$PI_CODING_AGENT_DIR/codex-ultra-mode.json` for all projects. Pi uses `~/.pi/agent` when `PI_CODING_AGENT_DIR` is not set.
 - `<project>/.pi/codex-ultra-mode.json` for one trusted project. Project configuration overrides the global value.
 
-For example, this permits `/root` plus up to seven subagents:
+For example, this enables Ultra for new sessions and permits `/root` plus up to eight subagents:
 
 ```json
 {
+  "defaultsOn": true,
   "maxConcurrentThreadsPerSession": 8
 }
 ```
 
-The value must be a safe integer of at least `1`. Configuration is loaded when a Pi session starts, so start a new session after changing it.
+`defaultsOn` defaults to `false`. It applies when a session has no saved `/ultra` choice, so toggling Ultra still wins when that session is resumed. `maxConcurrentThreadsPerSession` counts spawned agents rather than `/root` and must be a safe integer of at least `1`. Configuration is loaded when a Pi session starts, so start a new session after changing it.
+
+`spawn_agent` exposes per-child `model` and `reasoning_effort` overrides by default. Set `exposeSpawnAgentModelOverrides` to `false` to hide them. Set `waitAgentEnabled` to `false` to remove `wait_agent` from the collaboration tool surface.
+
+## Agent roles
+
+Ultra discovers Pi agent definitions from:
+
+- `$PI_CODING_AGENT_DIR/agents/*.md` for global roles.
+- The nearest trusted `<project>/.pi/agents/*.md` directory for project roles.
+
+Project roles replace global roles with the same `name`. Untrusted project roles are never loaded.
+
+```markdown
+---
+name: worker
+description: Use for execution and production work.
+model: openai-codex/gpt-5.6-sol
+thinking: high
+tools: read, write, bash
+---
+
+Own the assigned files and do not revert another agent's work.
+```
+
+Supported frontmatter fields are `name`, `description`, `model`, `thinking`, and `tools`. The Markdown body is appended as role-specific system instructions. A role's model, thinking level, and tools take precedence over spawn-time overrides. A tools list narrows the parent's active tools; collaboration tools remain available.
+
+When at least one role is available, `spawn_agent` exposes `agent_type`. Explicit role selection requires `fork_turns="none"` or a positive integer. A full-history fork inherits its parent's role configuration.
+
+Run `/ultra-agents-init` to scaffold Codex's `default`, `explorer`, and `worker` Markdown roles. The command asks whether to use the global or current project's agent directory. Missing defaults are created immediately. Identical files are left alone; if a default file has been customized or an upstream template changes, the command asks before replacing the differing defaults. Other agent files are never touched, so the command is safe to rerun when Ultra adds new built-in roles.
 
 ## Collaboration contract
 
 | Capability | Behavior |
 | --- | --- |
 | Supported models | Any active Pi model |
-| Activation | Explicit, session-persistent `/ultra` toggle |
+| Activation | Session-persistent `/ultra` toggle, initially controlled by `defaultsOn` |
 | Reasoning | Preserve Pi's currently selected thinking level |
 | Delegation policy | Ultra selects Codex's proactive multi-agent policy; normal mode selects its explicit-request-only policy |
-| Collaboration tools | `spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `interrupt_agent`, and `list_agents` |
-| Capacity | Four active or reserved agents across the complete tree, including `/root` |
+| Collaboration tools | `spawn_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`, and optionally `wait_agent` |
+| Capacity | Three spawned agents by default, plus `/root` |
 | Context forks | `fork_turns` accepts `none`, `all`, or a positive integer and defaults to `all` |
+| Agent roles | Global and trusted-project Pi agent Markdown; selected with `agent_type` |
 | Wait bounds | 10-second minimum, 30-second default, one-hour maximum |
 | Shutdown bound | Child interruption and unload are bounded to two seconds, with exactly-once late cleanup |
 

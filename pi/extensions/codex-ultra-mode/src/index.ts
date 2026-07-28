@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"
+import { registerAgentRoleScaffoldingCommand } from "./agent-role-scaffolding.ts"
 import {
   DEFAULT_COLLABORATION_CONFIG,
   type CollaborationConfig,
@@ -17,14 +18,14 @@ import { registerUltraHooks } from "./ultra-hooks.ts"
 
 const ULTRA_MODE_STATE_ENTRY = "codex-ultra-mode-state"
 
-function restoredUltraModeEnabled(ctx: ExtensionContext): boolean {
+function restoredUltraModeEnabled(ctx: ExtensionContext, defaultsOn: boolean): boolean {
   for (const entry of ctx.sessionManager.getBranch().toReversed()) {
     if (entry.type !== "custom" || entry.customType !== ULTRA_MODE_STATE_ENTRY) continue
     if (typeof entry.data !== "object" || entry.data === null) continue
     const enabled = (entry.data as { enabled?: unknown }).enabled
     if (typeof enabled === "boolean") return enabled
   }
-  return false
+  return defaultsOn
 }
 
 export interface CodexUltraModeDependencies {
@@ -36,7 +37,10 @@ function sameCollaborationConfig(
   left: CollaborationConfig,
   right: CollaborationConfig,
 ): boolean {
-  return left.defaultWaitTimeoutMs === right.defaultWaitTimeoutMs
+  return JSON.stringify(left.agentRoles) === JSON.stringify(right.agentRoles)
+    && left.defaultWaitTimeoutMs === right.defaultWaitTimeoutMs
+    && left.defaultsOn === right.defaultsOn
+    && left.exposeSpawnAgentModelOverrides === right.exposeSpawnAgentModelOverrides
     && left.hideSpawnAgentMetadata === right.hideSpawnAgentMetadata
     && left.maxConcurrentThreadsPerSession === right.maxConcurrentThreadsPerSession
     && left.maxWaitTimeoutMs === right.maxWaitTimeoutMs
@@ -45,6 +49,7 @@ function sameCollaborationConfig(
     && left.rootAgentUsageHintText === right.rootAgentUsageHintText
     && left.spawnAgentUsageHintText === right.spawnAgentUsageHintText
     && left.subagentUsageHintText === right.subagentUsageHintText
+    && left.waitAgentEnabled === right.waitAgentEnabled
 }
 
 export function createCodexUltraModeExtension(
@@ -80,7 +85,8 @@ export function createCodexUltraModeExtension(
       collaborationConfig: () => collaborationConfig,
       isEnabled: () => ultraEnabled,
     })
-    registerCollaborationTools(pi, () => coordinator, "/root", (ctx) => {
+    registerAgentRoleScaffoldingCommand(pi)
+    const refreshRootRuntime = (ctx: ExtensionContext) => {
       actorFactory.bindRoot(ctx, {
         collaborationConfig,
         thinkingLevel: pi.getThinkingLevel(),
@@ -88,8 +94,10 @@ export function createCodexUltraModeExtension(
         tools: pi.getActiveTools(),
         ultraEnabled,
       })
-    })
-
+    }
+    const registerRootTools = () => {
+      registerCollaborationTools(pi, () => coordinator, "/root", refreshRootRuntime)
+    }
     function syncStatus(ctx: ExtensionContext): void {
       const context = resolveUltraContext(ctx.model, ultraEnabled)
       const status = !ultraEnabled
@@ -130,7 +138,6 @@ export function createCodexUltraModeExtension(
       },
     })
     pi.on("session_start", async (_event, ctx) => {
-      ultraEnabled = restoredUltraModeEnabled(ctx)
       const sessionId = rootMailbox.sessionIdFor(ctx)
       const resolution = dependencies.resolveCollaborationConfig?.(ctx)
         ?? resolveCollaborationConfig({
@@ -138,6 +145,7 @@ export function createCodexUltraModeExtension(
           cwd: ctx.cwd,
           projectTrusted: ctx.isProjectTrusted(),
         })
+      ultraEnabled = restoredUltraModeEnabled(ctx, resolution.config.defaultsOn)
       for (const diagnostic of resolution.diagnostics) {
         ctx.ui.notify(
           `Ignoring Ultra configuration at ${diagnostic.path}: ${diagnostic.message}`,
@@ -157,6 +165,7 @@ export function createCodexUltraModeExtension(
         await coordinator.dispose()
         coordinator = newCoordinator()
       }
+      registerRootTools()
       coordinatorNeedsReset = false
       refreshRoot(ctx)
       activeSessionId = sessionId

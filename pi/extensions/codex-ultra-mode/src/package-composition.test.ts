@@ -22,6 +22,7 @@ describe("codex-ultra-mode package composition", () => {
       handler(args: string, ctx: ExtensionContext): Promise<void> | void
     }>()
     const tools = new Map<string, {
+      parameters?: { properties?: Record<string, unknown> }
       execute(
         id: string,
         params: Record<string, string>,
@@ -60,11 +61,17 @@ describe("codex-ultra-mode package composition", () => {
         return child
       },
       resolveCollaborationConfig: () => ({
-        config: DEFAULT_COLLABORATION_CONFIG,
+        config: {
+          ...DEFAULT_COLLABORATION_CONFIG,
+          agentRoles: [{
+            description: "Use for implementation.", filePath: "/agents/worker.md",
+            name: "worker", source: "user", systemPrompt: "Own the assigned files.",
+          }],
+          defaultsOn: true,
+        },
         diagnostics: [],
       }),
     })(fakePi)
-
     const ctx = {
       cwd: "/workspace",
       model: {
@@ -89,16 +96,29 @@ describe("codex-ultra-mode package composition", () => {
     } as ExtensionContext
     const sessionStart = handlers.get("session_start")
     await sessionStart?.({ type: "session_start", reason: "startup" }, ctx)
-    expect(statuses.get("codex-ultra-mode")).toBeUndefined()
+    expect(tools.get("spawn_agent")?.parameters?.properties).toHaveProperty("agent_type")
+    expect(statuses.get("codex-ultra-mode")).toBe("Ultra (medium) · 1")
     expect(sessionManager.entries.some(
       (entry) => entry.type === "custom" && entry.customType === "codex-ultra-mode-state",
     )).toBe(false)
-
     const alternateModelCtx = {
       ...ctx,
       model: { ...ctx.model, id: "unsupported" },
     } as ExtensionContext
     await handlers.get("model_select")?.({}, alternateModelCtx)
+    expect(statuses.get("codex-ultra-mode")).toBe("Ultra (medium) · 1")
+    await commands.get("ultra")?.handler("", alternateModelCtx)
+    expect(statuses.get("codex-ultra-mode")).toBeUndefined()
+    expect(notifications.at(-1)).toMatchObject({
+      level: "info",
+      message: "Ultra mode disabled.",
+    })
+    expect(sessionManager.entries.at(-1)).toMatchObject({
+      type: "custom",
+      customType: "codex-ultra-mode-state",
+      data: { enabled: false },
+    })
+    await sessionStart?.({ type: "session_start", reason: "resume" }, ctx)
     expect(statuses.get("codex-ultra-mode")).toBeUndefined()
     await commands.get("ultra")?.handler("", alternateModelCtx)
     expect(statuses.get("codex-ultra-mode")).toBe("Ultra (medium) · 1")
@@ -126,7 +146,7 @@ describe("codex-ultra-mode package composition", () => {
 
     const spawn = await tools.get("spawn_agent")?.execute(
       "spawn-call",
-      { task_name: "child", message: "Work", fork_turns: "none" },
+      { task_name: "child", message: "Work", fork_turns: "none", agent_type: "worker" },
       undefined,
       undefined,
       ctx,
@@ -137,6 +157,7 @@ describe("codex-ultra-mode package composition", () => {
       thinkingLevel: "medium",
       ultraEnabled: true,
     })
+    expect(childRequest?.runtime.snapshot.systemPrompt).toContain("Own the assigned files.")
     child.finish()
     await waitUntil(() => sessionManager.entries.some((entry) => entry.type === "custom_message"))
     await waitUntil(() => statuses.get("codex-ultra-mode") === "Ultra (medium) · 1")

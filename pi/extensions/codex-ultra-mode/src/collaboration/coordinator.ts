@@ -67,7 +67,7 @@ export class CollaborationCoordinator {
     this.residency = new CoordinatorResidency(
       actorFactory,
       this.registry,
-      Math.max(0, config.maxConcurrentThreadsPerSession - 1),
+      config.maxConcurrentThreadsPerSession,
       persistence,
       () => this.lifecycle,
     )
@@ -90,6 +90,7 @@ export class CollaborationCoordinator {
       this.delivery,
       this.residency,
       this.lifecycle,
+      config,
     )
   }
 

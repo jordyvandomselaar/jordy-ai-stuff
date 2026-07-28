@@ -49,15 +49,11 @@ export function extensionPaths(toolInfos: readonly ToolInfo[]): string[] {
   }))]
 }
 
-function toolMetadata(tool: ToolInfo): string {
-  return JSON.stringify({
-    description: tool.description,
-    parameters: tool.parameters,
-    promptGuidelines: tool.promptGuidelines,
-    sourcePath: COLLABORATION_TOOL_NAMES.has(tool.name)
-      ? "<codex-ultra-collaboration>"
-      : tool.sourceInfo.path,
-  })
+function toolSourcePath(tool: ToolInfo): string {
+  // Definitions can depend on live extension state; source ownership is the stable contract.
+  return COLLABORATION_TOOL_NAMES.has(tool.name)
+    ? "<codex-ultra-collaboration>"
+    : tool.sourceInfo.path
 }
 
 export function assertInheritedToolParity(
@@ -71,19 +67,19 @@ export function assertInheritedToolParity(
   const actualInfos = new Map(session.getAllTools().map((tool) => [tool.name, tool]))
   const unavailable = snapshot.tools.filter((name) => !actualInfos.has(name))
   const unexpected = [...actualNames].filter((name) => !expectedNames.has(name))
-  const changed = snapshot.tools.filter((name) => {
+  const replaced = snapshot.tools.filter((name) => {
     const expected = expectedInfos.get(name)
     const actual = actualInfos.get(name)
     return expected !== undefined
       && actual !== undefined
-      && toolMetadata(expected) !== toolMetadata(actual)
+      && toolSourcePath(expected) !== toolSourcePath(actual)
   })
-  if (unavailable.length === 0 && unexpected.length === 0 && changed.length === 0) return
+  if (unavailable.length === 0 && unexpected.length === 0 && replaced.length === 0) return
 
   const differences = [
     unavailable.length === 0 ? undefined : `unavailable: ${unavailable.join(", ")}`,
     unexpected.length === 0 ? undefined : `unexpected: ${unexpected.join(", ")}`,
-    changed.length === 0 ? undefined : `different definitions: ${changed.join(", ")}`,
+    replaced.length === 0 ? undefined : `different sources: ${replaced.join(", ")}`,
   ].filter((difference) => difference !== undefined).join("; ")
   throw new Error(
     `Child ${actorPath} could not recreate the parent's inherited tools (${differences}). `

@@ -1,3 +1,9 @@
+import {
+  type CollaborationConfig,
+  DEFAULT_COLLABORATION_CONFIG,
+} from "../collaboration-config.ts"
+import { formatAgentRoles } from "./agent-roles.ts"
+
 const string = (description: string) => ({ type: "string", description } as const)
 const number = (description: string) => ({ type: "number", description } as const)
 
@@ -23,19 +29,29 @@ The new agent's canonical task name will be provided to it along with the messag
 Note that passing \`fork_turns="none"\` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas \`fork_turns="all"\` will provide the subagent with all surrounding context.`
 
 export function collaborationToolContracts(config: CollaborationConfig) {
+  const roleDescription = formatAgentRoles(config.agentRoles)
   const spawnProperties = {
     task_name: string("Task name for the new agent. Use lowercase letters, digits, and underscores."),
     message: string("Initial plain-text task for the new agent."),
     fork_turns: string("Optional number of turns to fork. Defaults to `all`. Use `none`, `all`, or a positive integer string such as `3` to fork only the most recent turns."),
-    ...(config.hideSpawnAgentMetadata ? {} : {
+    ...(config.agentRoles.length === 0 ? {} : {
+      agent_type: string(
+        "Agent type override for the new agent. Omit to inherit the parent configuration. Set `fork_turns` to `none` or a positive integer when an explicit override is needed.\n"
+        + roleDescription,
+      ),
+    }),
+    ...(config.exposeSpawnAgentModelOverrides ? {
       model: string("Optional active Pi model to use. Requires a truncated fork; accepts provider/model references."),
       reasoning_effort: string("Optional child reasoning effort: off, minimal, low, medium, high, xhigh, or max. Requires a truncated fork."),
-    }),
+    } : {}),
   }
   return {
   spawn_agent: {
     label: "Spawn Agent",
-    description: config.spawnAgentUsageHintText ?? spawnDescription,
+    description: config.spawnAgentUsageHintText
+      ?? (roleDescription.length === 0
+        ? spawnDescription
+        : `${roleDescription}\n\n${spawnDescription}`),
     parameters: object(
       spawnProperties,
       ["task_name", "message"],
@@ -67,7 +83,7 @@ export function collaborationToolContracts(config: CollaborationConfig) {
     label: "Wait for Agent",
     description: "Wait for a mailbox update from any live agent, including queued messages and final-status notifications. The wait also ends early when new user input is steered into the active turn. Does not return the content; returns either a summary of which agents have updates (if any), an interruption summary for steered input, or a timeout summary if no activity arrives before the deadline.",
     parameters: object({
-      timeout_ms: number(`Timeout in milliseconds. Defaults to ${config.defaultWaitTimeoutMs}; minimum ${config.minWaitTimeoutMs}, maximum ${config.maxWaitTimeoutMs}.`),
+      timeout_ms: number(`Timeout in milliseconds. Defaults to ${config.defaultWaitTimeoutMs}, min ${config.minWaitTimeoutMs}, max ${config.maxWaitTimeoutMs}. Prefer longer waits (minutes) to avoid busy polling.`),
     }),
   },
   interrupt_agent: {
@@ -88,11 +104,6 @@ export function collaborationToolContracts(config: CollaborationConfig) {
   } as const
 }
 
-export const COLLABORATION_TOOL_CONTRACTS = collaborationToolContracts({
-  defaultWaitTimeoutMs: 30_000,
-  hideSpawnAgentMetadata: true,
-  maxConcurrentThreadsPerSession: 4,
-  maxWaitTimeoutMs: 3_600_000,
-  minWaitTimeoutMs: 10_000,
-})
-import type { CollaborationConfig } from "../collaboration-config.ts"
+export const COLLABORATION_TOOL_CONTRACTS = collaborationToolContracts(
+  DEFAULT_COLLABORATION_CONFIG,
+)

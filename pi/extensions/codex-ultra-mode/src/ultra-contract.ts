@@ -3,13 +3,16 @@ import {
   type CollaborationConfig,
 } from "./collaboration-config.ts"
 
-export const CODEX_PARITY_COMMIT = "8cf9a1b1f8ea35c724831a739fea2d725d72c582" as const
+export const CODEX_PARITY_COMMIT = "f029bb795ccbbd8471511f5a8b93e56d8f2b6d31" as const
+export const CODEX_AGENT_ROLE_PARITY_COMMIT =
+  "f029bb795ccbbd8471511f5a8b93e56d8f2b6d31" as const
 
 export const CODEX_PARITY_SOURCES = {
   modeInstructions: "codex-rs/core/src/context/multi_agent_mode_instructions.rs",
   collaborationConfig: "codex-rs/core/src/config/mod.rs",
   collaborationTools: "codex-rs/core/src/tools/handlers/multi_agents_spec.rs",
   collaborationRuntime: "codex-rs/core/src/tools/handlers/multi_agents_v2/",
+  agentRoles: "codex-rs/core/src/agent/role.rs",
 } as const
 
 export const MULTI_AGENT_MODE_MARKERS = {
@@ -18,7 +21,7 @@ export const MULTI_AGENT_MODE_MARKERS = {
 } as const
 
 export const EXPLICIT_REQUEST_ONLY_MULTI_AGENT_MODE_TEXT =
-  "Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work."
+  "Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work."
 
 export const PROACTIVE_MULTI_AGENT_MODE_TEXT =
   "Proactive multi-agent delegation is active. Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies. Use sub-agents when parallel work would materially improve speed or quality. This mode remains active until a later multi-agent mode developer message changes it."
@@ -77,26 +80,32 @@ Payload:
 \`\`\`
 You may also see them addressed as to=/root/..., which indicates your identity is /root/...`
 
-const SHARED_AGENT_USAGE_HINT = `Call \`spawn_agent\`, \`send_message\`, \`followup_task\`, \`wait_agent\`, \`interrupt_agent\`, and \`list_agents\` directly by their flat registered tool names. They are not commands inside another tool.
+function sharedAgentUsageHint(config: CollaborationConfig): string {
+  const tools = CODEX_COLLABORATION_TOOLS
+    .filter((tool) => tool !== "wait_agent" || config.waitAgentEnabled)
+    .map((tool) => `\`${tool}\``)
+    .join(", ")
+  return `Call ${tools} directly by their flat registered tool names. They are not commands inside another tool.
 
 All agents share the same directory. In detail:
 - All agents have access to the same container and filesystem as you.
 - All agents use the same current working directory.
 - As a result, edits made by one agent are immediately visible to all other agents.`
+}
 
 function concurrencyUsageHint(config: CollaborationConfig): string {
   const slots = config.maxConcurrentThreadsPerSession
-  return `There are ${slots} available concurrency slots, meaning that up to ${slots} agents can be active at once, including you.`
+  return `There are ${slots} available sub-agent slots, meaning that up to ${slots} spawned agents can be active at once in addition to you.`
 }
 
 export function codexRootAgentUsageHint(
   config: CollaborationConfig = DEFAULT_COLLABORATION_CONFIG,
 ): string {
-  return `${ROOT_AGENT_USAGE_HINT}\n\n${SHARED_AGENT_USAGE_HINT}\n\n${concurrencyUsageHint(config)}`
+  return `${ROOT_AGENT_USAGE_HINT}\n\n${sharedAgentUsageHint(config)}\n\n${concurrencyUsageHint(config)}`
 }
 
 export function codexSubagentUsageHint(
   config: CollaborationConfig = DEFAULT_COLLABORATION_CONFIG,
 ): string {
-  return `${SUBAGENT_USAGE_HINT}\n\n${SHARED_AGENT_USAGE_HINT}\n\n${concurrencyUsageHint(config)}`
+  return `${SUBAGENT_USAGE_HINT}\n\n${sharedAgentUsageHint(config)}\n\n${concurrencyUsageHint(config)}`
 }

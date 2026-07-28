@@ -32,6 +32,7 @@ export interface CollaborationActorSpec {
 }
 
 export interface CollaborationRuntimeOverrides {
+  agentType?: string
   model?: string
   reasoningEffort?: string
 }

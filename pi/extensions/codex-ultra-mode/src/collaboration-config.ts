@@ -1,11 +1,18 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import {
+  type CollaborationAgentRole,
+  resolveAgentRoles,
+} from "./collaboration/agent-roles.ts"
 
 export const COLLABORATION_CONFIG_FILENAME = "codex-ultra-mode.json" as const
 const PROJECT_CONFIG_DIR = ".pi"
 
 export interface CollaborationConfig {
+  agentRoles: readonly CollaborationAgentRole[]
   defaultWaitTimeoutMs: number
+  defaultsOn: boolean
+  exposeSpawnAgentModelOverrides: boolean
   hideSpawnAgentMetadata: boolean
   maxConcurrentThreadsPerSession: number
   maxWaitTimeoutMs: number
@@ -14,14 +21,19 @@ export interface CollaborationConfig {
   rootAgentUsageHintText?: string
   spawnAgentUsageHintText?: string
   subagentUsageHintText?: string
+  waitAgentEnabled: boolean
 }
 
 export const DEFAULT_COLLABORATION_CONFIG: Readonly<CollaborationConfig> = Object.freeze({
+  agentRoles: Object.freeze([]),
   defaultWaitTimeoutMs: 30_000,
+  defaultsOn: false,
+  exposeSpawnAgentModelOverrides: true,
   hideSpawnAgentMetadata: true,
-  maxConcurrentThreadsPerSession: 4,
+  maxConcurrentThreadsPerSession: 3,
   maxWaitTimeoutMs: 3_600_000,
   minWaitTimeoutMs: 10_000,
+  waitAgentEnabled: true,
 })
 
 export interface CollaborationConfigDiagnostic {
@@ -44,6 +56,8 @@ type PartialCollaborationConfig = Partial<CollaborationConfig>
 
 const CONFIG_KEYS = [
   "defaultWaitTimeoutMs",
+  "defaultsOn",
+  "exposeSpawnAgentModelOverrides",
   "hideSpawnAgentMetadata",
   "maxConcurrentThreadsPerSession",
   "maxWaitTimeoutMs",
@@ -52,6 +66,7 @@ const CONFIG_KEYS = [
   "rootAgentUsageHintText",
   "spawnAgentUsageHintText",
   "subagentUsageHintText",
+  "waitAgentEnabled",
 ] as const satisfies readonly (keyof CollaborationConfig)[]
 const CONFIG_KEY_SET = new Set<string>(CONFIG_KEYS)
 const MAX_WAIT_TIMEOUT_MS = 3_600_000
@@ -79,19 +94,24 @@ function parseConfigFile(path: string):
     return { error: `unknown configuration fields: ${unknownKeys.join(", ")}` }
   }
 
-  const config: PartialCollaborationConfig = {}
+  let config: PartialCollaborationConfig = {}
   for (const key of CONFIG_KEYS) {
     const value = parsed[key]
     if (value === undefined) continue
-    if (key === "hideSpawnAgentMetadata") {
+    if (
+      key === "defaultsOn"
+      || key === "exposeSpawnAgentModelOverrides"
+      || key === "hideSpawnAgentMetadata"
+      || key === "waitAgentEnabled"
+    ) {
       if (typeof value !== "boolean") return { error: `${key} must be a boolean` }
-      config[key] = value
+      config = { ...config, [key]: value }
     } else if (key.endsWith("Text")) {
       if (typeof value !== "string") return { error: `${key} must be a string` }
-      config[key] = value
+      config = { ...config, [key]: value }
     } else {
       if (typeof value !== "number") return { error: `${key} must be a number` }
-      config[key] = value
+      config = { ...config, [key]: value }
     }
   }
   return { config }
@@ -164,8 +184,10 @@ export function resolveCollaborationConfig(
       diagnostics,
     )
   }
+  const agentRoles = resolveAgentRoles(locations)
+  diagnostics.push(...agentRoles.diagnostics)
   return {
-    config: Object.freeze(config),
+    config: Object.freeze({ ...config, agentRoles: agentRoles.roles }),
     diagnostics: Object.freeze(diagnostics),
   }
 }

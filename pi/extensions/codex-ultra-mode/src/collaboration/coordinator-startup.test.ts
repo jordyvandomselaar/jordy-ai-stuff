@@ -14,7 +14,7 @@ import {
 import { deferred, FakeClock, FakeSession, spawn } from "./coordinator-test-support.ts"
 
 describe("CollaborationCoordinator startup", () => {
-  test("owns recursive paths and atomically reserves one configured tree", async () => {
+  test("owns recursive paths and reserves the configured number of subagents", async () => {
     const childSession = new FakeSession()
     const childCreation = deferred<CollaborationActorSession>()
     const nestedCreation = deferred<CollaborationActorSession>()
@@ -30,7 +30,7 @@ describe("CollaborationCoordinator startup", () => {
       factory,
       undefined,
       undefined,
-      { ...DEFAULT_COLLABORATION_CONFIG, maxConcurrentThreadsPerSession: 3 },
+      { ...DEFAULT_COLLABORATION_CONFIG, maxConcurrentThreadsPerSession: 2 },
     )
 
     await expect(spawn(coordinator, "/root", "invalid_fork", "Invalid", "0"))

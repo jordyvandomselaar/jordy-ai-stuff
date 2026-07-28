@@ -74,6 +74,7 @@ export function registerCollaborationTools(
       refreshRuntime?.(ctx)
       const snapshot = await currentCoordinator(coordinator).spawn(actorPath, params.task_name, {
         task: params.message,
+        agentType: params.agent_type,
         parentHistory: forkHistoryFromPiBranch(ctx.sessionManager.buildContextEntries()),
         forkTurns: params.fork_turns,
         model: params.model,
@@ -113,25 +114,31 @@ export function registerCollaborationTools(
     },
   })
 
-  pi.registerTool({
-    name: "wait_agent",
-    ...contracts.wait_agent,
-    ...presentation("wait_agent"),
-    async execute(_toolCallId, params, signal) {
-      const activeCoordinator = currentCoordinator(coordinator)
-      const outcome = await activeCoordinator.waitForMailbox(
-        actorPath,
-        timeoutMs(params.timeout_ms, activeCoordinator.config),
-        signal,
-      )
-      if (outcome.kind === "timeout") return result({ message: "Wait timed out.", timed_out: true })
-      if (outcome.kind === "activity") return result({ message: "Wait completed.", timed_out: false })
-      if (outcome.kind === "shutdown") {
-        return result({ message: "Wait stopped because collaboration shut down.", timed_out: false })
-      }
-      return result({ message: "Wait interrupted by new input.", timed_out: false })
-    },
-  })
+  if (currentCoordinator(coordinator).config.waitAgentEnabled) {
+    pi.registerTool({
+      name: "wait_agent",
+      ...contracts.wait_agent,
+      ...presentation("wait_agent"),
+      async execute(_toolCallId, params, signal) {
+        const activeCoordinator = currentCoordinator(coordinator)
+        const outcome = await activeCoordinator.waitForMailbox(
+          actorPath,
+          timeoutMs(params.timeout_ms, activeCoordinator.config),
+          signal,
+        )
+        if (outcome.kind === "timeout") {
+          return result({ message: "Wait timed out.", timed_out: true })
+        }
+        if (outcome.kind === "activity") {
+          return result({ message: "Wait completed.", timed_out: false })
+        }
+        if (outcome.kind === "shutdown") {
+          return result({ message: "Wait stopped because collaboration shut down.", timed_out: false })
+        }
+        return result({ message: "Wait interrupted by new input.", timed_out: false })
+      },
+    })
+  }
 
   pi.registerTool({
     name: "interrupt_agent",
@@ -159,7 +166,6 @@ export function registerCollaborationTools(
         agents: activeCoordinator.listAgents(prefix).map((agent) => ({
           agent_name: agent.path,
           agent_status: publicStatus(agent.status),
-          last_task_message: agent.latestTask,
         })),
       })
     },

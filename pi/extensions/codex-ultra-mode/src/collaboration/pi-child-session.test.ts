@@ -33,6 +33,7 @@ function actorSpec(sessionState?: unknown) {
 
 function constructionHarness(sessionState?: unknown) {
   const appended: AgentSession["messages"] = []
+  const settingsOverrides: unknown[] = []
   let loaderOptions: Record<string, unknown> | undefined
   let agentOptions: Record<string, unknown> | undefined
   const session = {
@@ -49,6 +50,7 @@ function constructionHarness(sessionState?: unknown) {
   class ResourceLoader {
     constructor(options: Record<string, unknown>) { loaderOptions = options }
     async reload() {}
+    getExtensions() { return { extensions: [] } }
   }
   class SessionManager {
     static inMemory() { return new SessionManager() }
@@ -73,7 +75,9 @@ function constructionHarness(sessionState?: unknown) {
         getGlobalSettings: () => ({}),
         getProjectSettings: () => ({}),
       }),
-      inMemory: () => ({ applyOverrides() {} }),
+      inMemory: () => ({
+        applyOverrides(settings: unknown) { settingsOverrides.push(settings) },
+      }),
     },
   }
   const parentSnapshot = snapshotFromContext(rootContext(), {
@@ -104,6 +108,7 @@ function constructionHarness(sessionState?: unknown) {
     get loaderOptions() { return loaderOptions },
     loadSdk: async () => sdk,
     request,
+    settingsOverrides,
   }
 }
 
@@ -122,6 +127,7 @@ describe("production Pi child construction", () => {
       type: "session_start",
       reason: "fork",
     })
+    expect(harness.settingsOverrides.at(-1)).toEqual({ transport: "sse" })
   })
 
   test("uses authoritative native session state without converting or duplicating context", async () => {
