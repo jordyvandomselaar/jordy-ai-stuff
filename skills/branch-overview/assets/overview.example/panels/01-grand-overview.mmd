@@ -1,0 +1,15 @@
+flowchart TB
+  subgraph P[Stable baseline]
+    direction LR
+    A[Caller] --> B[Orchestration] --> C[Domain operation]
+  end
+  C --> D{Branch change}
+  D -->|new behavior| E[Changed path]
+  D -->|preserved behavior| F[Compatibility path]
+  E --> G[Outcome]
+  F --> G
+  classDef host fill:#dce9ff,stroke:#0a84ff,color:#1d1d1f
+  classDef data fill:#e0f2e5,stroke:#2e9f55,color:#1d1d1f
+  class B,D host
+  class G data
+  style P fill:#fafafa,stroke:#d2d2d7

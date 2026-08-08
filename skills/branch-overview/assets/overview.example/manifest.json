@@ -1,0 +1,51 @@
+{
+  "version": 2,
+  "header": {
+    "title": "feature-branch vs origin/main",
+    "subtitle": "One sentence describing the branch outcome.",
+    "chip": "baseline → changed behavior → proof"
+  },
+  "sidebar": {
+    "label": "Flows",
+    "guardrail": {
+      "title": "Guardrail",
+      "body": "The invariant the viewer should remember."
+    }
+  },
+  "panels": [
+    {
+      "id": "grand-overview",
+      "navTitle": "Grand overview",
+      "navSummary": "The complete change in one flow",
+      "heading": "Grand overview",
+      "summary": "How the baseline becomes the branch outcome.",
+      "mentalModel": {
+        "title": "Read the branch like this",
+        "markdownFile": "panels/01-grand-overview.md",
+        "points": [
+          {
+            "title": "Core invariant",
+            "body": "State the rule that must remain true across every path."
+          },
+          {
+            "title": "Scope boundary",
+            "body": "Name what the branch enables without implying follow-up work is already complete."
+          }
+        ]
+      },
+      "mermaidFile": "panels/01-grand-overview.mmd"
+    },
+    {
+      "id": "behavior",
+      "navTitle": "Main behavior",
+      "navSummary": "The changed runtime journey",
+      "heading": "Main behavioral flow",
+      "summary": "The runtime path introduced by the branch.",
+      "mentalModel": {
+        "title": "What changes at runtime",
+        "markdownFile": "panels/02-behavior.md"
+      },
+      "mermaidFile": "panels/02-behavior.mmd"
+    }
+  ]
+}
