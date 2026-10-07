@@ -35,10 +35,17 @@ The commands use the selected model's actual provider and model ID in place of `
 
 ## Install
 
-Add this directory to the `extensions` list in Pi's settings and run `/reload`:
+Install the extension from the repository:
+
+```bash
+pi install git:github.com/jordyvandomselaar/jordy-ai-stuff
+```
+
+Then run these commands in Pi to load it and enable it for the selected model:
 
 ```text
-/path/to/jordy-shares-stuff/pi/extensions/context-windows
+/reload
+/context-windows on
 ```
 
 Requires Pi 0.85.1 or later. No Pi core patches, external backend, or extra credentials are required. Tool-capable models can use the extension. Model quality after a reset depends on checkpointing and history retrieval.

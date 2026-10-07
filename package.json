@@ -1,0 +1,7 @@
+{
+  "name": "jordy-ai-stuff",
+  "private": true,
+  "pi": {
+    "extensions": ["./pi/extensions/context-windows/index.ts"]
+  }
+}
