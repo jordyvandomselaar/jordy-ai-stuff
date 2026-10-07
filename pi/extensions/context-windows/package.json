@@ -1,0 +1,14 @@
+{
+  "name": "pi-context-windows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Per-model context windows with durable notes, bounded history recovery, and local resets for Pi.",
+  "keywords": ["pi-package", "pi-extension", "context", "compaction"],
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.85.1",
+    "@earendil-works/pi-coding-agent": ">=0.85.1",
+    "typebox": "^1.1.0"
+  },
+  "pi": { "extensions": ["./index.ts"] }
+}
